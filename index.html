@@ -11,9 +11,11 @@
 
   <script>
     // ================== CONFIGURE AQUI ==================
-    const URL_INTERNO = "http://192.168.0.44:5005/BBsinc/login";
-    const URL_EXTERNO = "http://187.49.156.114:5005/BBsinc/login"; // troque se quiser
-    const TIMEOUT_MS  = 900; // 700–900ms costuma ser ideal
+    const URL_INTERNO   = "http://192.168.0.44:5005/BBsinc/login";
+    const URL_TERCEIRO  = "https://192.168.0.44/BBsinc/login"; // <--- novo candidato (exemplo)
+    const URL_EXTERNO   = "http://187.49.156.114:5005/BBsinc/login";
+    const TIMEOUT_MS    = 900; // 700–900ms costuma ser ideal
+    const GUARDA_MS     = 2000; // guarda geral para evitar travas (ajustado p/ 2s)
     // ====================================================
 
     function timeout(ms) {
@@ -21,47 +23,51 @@
     }
 
     function navegar(url) {
-      // replace para não deixar histórico do redirecionador
-      window.location.replace(url);
+      window.location.replace(url); // não polui histórico
+    }
+
+    async function testaURL(url) {
+      // Em HTTPS, um fetch para HTTP pode falhar (mixed content) -> cai no catch
+      // no-cors evita CORS, HEAD é leve.
+      await Promise.race([
+        fetch(url, { method: "HEAD", mode: "no-cors", cache: "no-store" }),
+        timeout(TIMEOUT_MS),
+      ]);
     }
 
     async function tentarAcesso() {
-      // Guarda: se nada acontecer em 1500ms, força EXTERNO
-      const guarda = setTimeout(() => navegar(URL_EXTERNO), 1500);
+      // Guarda geral: se nada resolveu em GUARDA_MS, cai no EXTERNO
+      const guarda = setTimeout(() => navegar(URL_EXTERNO), GUARDA_MS);
 
       try {
-        // MUITO IMPORTANTE:
-        // Em páginas HTTPS (GitHub Pages), um fetch para HTTP pode ser bloqueado (mixed content).
-        // Se for bloqueado, o fetch vai lançar erro -> cai no catch -> navegamos para EXTERNO.
-        await Promise.race([
-          fetch(URL_INTERNO, { method: "HEAD", mode: "no-cors", cache: "no-store" }),
-          timeout(TIMEOUT_MS)
-        ]);
-
-        // Se chegamos aqui sem timeout, consideramos a rota interna "atingível".
+        // 1) Tenta interno
+        await testaURL(URL_INTERNO);
         clearTimeout(guarda);
-        navegar(URL_INTERNO);
-
-      } catch (e) {
-        // Se deu erro (ex.: mixed content bloqueado, CORS, rede, etc.), vamos para EXTERNO
-        clearTimeout(guarda);
-        navegar(URL_EXTERNO);
+        return navegar(URL_INTERNO);
+      } catch (_) {
+        // segue para o próximo
       }
+
+      try {
+        // 2) Tenta terceiro
+        await testaURL(URL_TERCEIRO);
+        clearTimeout(guarda);
+        return navegar(URL_TERCEIRO);
+      } catch (_) {
+        // segue para o próximo
+      }
+
+      // 3) Vai para externo
+      clearTimeout(guarda);
+      navegar(URL_EXTERNO);
     }
 
-    // Dispara o teste assim que possível (sem mostrar nada na tela)
     window.addEventListener("load", tentarAcesso);
   </script>
 
   <style>
-    /* Tela completamente em branco (sem textos/loader) */
     html, body { background: #ffffff; margin: 0; padding: 0; height: 100%; }
   </style>
 </head>
 <body></body>
 </html>
-
-
-
-
-
